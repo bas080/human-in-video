@@ -1,0 +1,49 @@
+# Human in video
+
+I needed a quick and simple CLI tool for finding humans in videos...
+
+and optionally creating an output video with chapters placed at an occurrence
+of a human.
+
+Uses the cv2 lib and 'haarcascade_upperbody.xml'. You could change this in the
+script to some other model. This would allow one to match on anything really.
+
+I use `mpv` and the keyboard shortcuts `page-up` and `page-down` to jump between
+chapters. You could use VLC for the same goals.
+
+## Usage
+
+> For demonstration purposes we are using an image instead as it saves on repo
+> size.
+
+Requires a video as an argument.
+
+```bash bash 2>&1 || true
+human-in-video
+```
+
+Will exit non zero when no humans are found.
+
+```bash bash 2>&1 || true
+human-in-video ./no-human.jpg
+```
+
+Exits with exit-code 0 when a human is found.
+
+```bash bash 2>&1
+human-in-video ./human.jpg
+```
+
+Exits with exit-code 0 and creates an output video with chapters.
+
+```bash bash 2>&1
+human-in-video ./human.jpg ./human-output.jpg
+```
+
+Let's cleanup.
+
+```bash bash
+rm  ./human-output.jpg
+```
+
+Happy coding!

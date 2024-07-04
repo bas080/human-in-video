@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+
+import cv2
+import subprocess
+import logging
+import argparse
+import sys
+import tempfile
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s')
+
+# Function to detect humans using OpenCV's pre-trained Haar Cascade
+def detect_humans(frame):
+    # Load the Haar Cascade for human detection
+    cascade_path = cv2.data.haarcascades + 'haarcascade_upperbody.xml'
+    cascade = cv2.CascadeClassifier(cascade_path)
+
+    # Convert frame to grayscale for detection
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+    # Detect human bodies in the frame
+    bodies = cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+
+    return bodies
+
+# Function to process video and create chapters
+def process_video(input_video, create_chapters):
+    logging.info(f'Starting to process video: {input_video}')
+
+    cap = cv2.VideoCapture(input_video)
+    frame_rate = int(cap.get(cv2.CAP_PROP_FPS))
+    frame_count = 0
+    chapters = []
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # Detect humans in the frame
+        bodies = detect_humans(frame)
+
+        # If humans are detected, mark this frame
+        if len(bodies) > 0:
+            timestamp = frame_count / frame_rate
+            chapters.append(timestamp)  # Convert frame count to timestamp
+            logging.info(f'Human detected at frame {frame_count}, timestamp {timestamp:.2f}s')
+            if not create_chapters:
+                cap.release()
+                logging.info(f'Human detected, exiting.')
+                sys.exit(0)
+
+        frame_count += 1
+
+    cap.release()
+    logging.info(f'Finished processing video. Total frames: {frame_count}, Chapters detected: {len(chapters)}')
+
+    if not chapters:
+        logging.error('No humans detected in the video.')
+        sys.exit(1)
+
+    # Create chapters file in FFmpeg chapter format
+    chapters_file = tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.txt')
+    with chapters_file as f:
+        for idx, timestamp in enumerate(chapters):
+            start_time = int(timestamp * 1000)
+            f.write(f"[CHAPTER]\nTIMEBASE=1/1000\nSTART={start_time}\nEND=")
+            if idx < len(chapters) - 1:
+                end_time = int(chapters[idx + 1] * 1000)
+                f.write(f"{end_time}\n")
+            else:
+                f.write("1000000\n")  # Arbitrary large number for END of last chapter
+
+    logging.info(f'Chapters file created: {chapters_file.name}')
+    return chapters_file.name
+
+# Function to create output video with embedded chapters using FFmpeg
+def create_video_with_chapters(input_video, output_video, chapters_file):
+    logging.info(f'Starting to create video with chapters: {output_video}')
+
+    # Use FFmpeg to add chapters to output video
+    ffmpeg_cmd = f"ffmpeg -i {input_video} -f ffmetadata -i {chapters_file} -map_metadata 1 -c copy {output_video}"
+    subprocess.call(ffmpeg_cmd, shell=True)
+
+    logging.info(f'Video with chapters created: {output_video}')
+
+# Main function to execute the process
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Detect humans in a video and add chapters at those points.')
+    parser.add_argument('input_video', type=str, help='Input video file path')
+    parser.add_argument('output_video', type=str, nargs='?', help='Output video file path with chapters (optional)', default=None)
+
+    args = parser.parse_args()
+
+    # Process video and get chapters file
+    create_chapters = args.output_video is not None
+
+    chapters_file = process_video(args.input_video, create_chapters)
+
+    if create_chapters:
+        create_video_with_chapters(args.input_video, args.output_video, chapters_file)
